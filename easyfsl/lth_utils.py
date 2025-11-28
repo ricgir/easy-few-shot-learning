@@ -29,11 +29,12 @@ def make_mask(model):
     Create a mask list matching only weight tensors with dim > 1
     (Conv and Linear layers, skipping BN 1-D weights).
     """
-    mask = []
+    mask_list = []
     for name, p in model.named_parameters():
         if "weight" in name and p.dim() > 1:
-            mask.append(np.ones(p.shape, dtype=np.float32))
-    return mask
+            mask = np.ones(p.shape)
+            mask_list.append(mask)
+    return mask_list
 
 
 # def prune_by_percentile(percent, model):
