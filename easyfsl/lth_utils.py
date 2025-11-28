@@ -18,11 +18,11 @@ def print_nonzeros(model):
 
 
 def make_mask(model):
-    global mask
     mask = []
     for name, p in model.named_parameters():
         if 'weight' in name:
             mask.append(np.ones_like(p.data.cpu().numpy()))
+    return mask
 
 
 def prune_by_percentile(percent, model):
