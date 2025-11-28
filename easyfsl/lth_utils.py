@@ -24,17 +24,18 @@ def print_nonzeros(model):
 #             mask.append(np.ones_like(p.data.cpu().numpy()))
 #     return mask
 
-def make_mask(model):
-    """
-    Create a mask list matching only weight tensors with dim > 1
-    (Conv and Linear layers, skipping BN 1-D weights).
-    """
-    mask_list = []
+def get_prunable_params(model):
+    prunable = []
     for name, p in model.named_parameters():
-        if "weight" in name and p.dim() > 1:
-            mask = np.ones(p.shape)
-            mask_list.append(mask)
+        if "weight" in name and p.dim() > 1:   # conv/linear weights only
+            prunable.append((name, p))
+    return prunable
+
+def make_mask(model):
+    prunable = get_prunable_params(model)
+    mask_list = [np.ones(p.shape, dtype=np.float32) for name, p in prunable]
     return mask_list
+
 
 
 # def prune_by_percentile(percent, model):
@@ -57,31 +58,30 @@ def make_mask(model):
 #         mask[idx] = new_mask
 #         idx += 1
 def prune_by_percentile(percent, model, mask_list):
-    """
-    Zeroes out weights in the backbone (model) based on global percentile threshold.
-    Updates mask_list in place.
-    """
-    # collect all surviving weights
+    prunable = get_prunable_params(model)
+
+    # ---- collect surviving weights ----
     all_weights = []
-    for (name, p), m in zip(model.named_parameters(), mask_list):
-        if "weight" in name and p.dim() > 1:
-            w = p.detach().cpu().numpy()
-            all_weights.extend(np.abs(w[m == 1]))
+    for (name, p), m in zip(prunable, mask_list):
+        w = p.detach().cpu().numpy()
+        all_weights.extend(np.abs(w[m == 1]))
 
     if len(all_weights) == 0:
-        print("Warning: No weights available for pruning (mask empty).")
+        print("Warning: No weights left to prune.")
         return
 
     threshold = np.percentile(all_weights, percent)
 
-    # prune
-    idx = 0
-    for name, p in model.named_parameters():
-        if "weight" in name and p.dim() > 1:
-            w = p.detach().cpu().numpy()
-            new_mask = (np.abs(w) > threshold).astype(np.float32)
-            mask_list[idx] = new_mask   # update mask
-            idx += 1
+    # ---- apply new mask ----
+    new_mask_list = []
+    for (name, p), old_mask in zip(prunable, mask_list):
+        w = p.detach().cpu().numpy()
+        new_mask = (np.abs(w) > threshold).astype(np.float32)
+        new_mask_list.append(new_mask)
+
+    # update mask_list in-place
+    mask_list[:] = new_mask_list
+
 
 
 
